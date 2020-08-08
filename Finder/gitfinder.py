@@ -18,13 +18,12 @@ import sys
 import ssl
 import encodings.idna
 
-def findgitrepo(output_file, domains):
-    domain = ".".join(encodings.idna.ToASCII(label).decode("ascii") for label in domains.strip().split("."))
-
+def try_http(domain):
     try:
         # Try to download http://target.tld/.git/HEAD
         with urlopen(''.join(['http://', domain, '/.git/HEAD']), context=ssl._create_unverified_context(), timeout=5) as response:
             answer = response.read(200).decode('utf-8', 'ignore')
+            
 
     except HTTPError:
         return
@@ -38,16 +37,53 @@ def findgitrepo(output_file, domains):
         return
     except (KeyboardInterrupt, SystemExit):
         raise
+        
+    return answer
+    
+def try_https(domain):
+    try:
+        # Try to download http://target.tld/.git/HEAD
+        with urlopen(''.join(['https://', domain, '/.git/HEAD']), context=ssl._create_unverified_context(), timeout=5) as response:
+            answer = response.read(200).decode('utf-8', 'ignore')
+            
+
+    except HTTPError:
+        return
+    except URLError:
+        return
+    except OSError:
+        return
+    except ConnectionResetError:
+        return
+    except ValueError:
+        return
+    except (KeyboardInterrupt, SystemExit):
+        raise
+        
+    return answer
+
+def findgitrepo(output_file, domains):
+    domain = ".".join(encodings.idna.ToASCII(label).decode("ascii") for label in domains.strip().split("."))
+
 
     # Check if refs/heads is in the file
-    if 'refs/heads' not in answer:
-        return
+    http_answer = try_http(domain)
+    if http_answer and 'refs/heads' not in http_answer:
+        https_answer = try_https(domain)
+        if https_answer and 'refs/heads' not in https_answer:
+            return
+
+    
+    if http_answer:
+        schema = 'http://'
+    else:
+        schema = 'https://'
 
     # Write match to output_file
     with open(output_file, 'a') as file_handle:
-        file_handle.write(''.join([domain, '\n']))
+        file_handle.write(''.join([schema, domain, '\n']))
 
-    print(''.join(['[*] Found: ', domain]))
+    print(''.join(['[*] Found: ', schema, domain]))
 
 
 def read_file(filename):
